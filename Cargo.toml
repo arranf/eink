@@ -1,0 +1,15 @@
+[package]
+name = "eink"
+version = "0.1.0"
+authors = ["Arran France <arran@arranfrance.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-graphics = "0.6.2"
+epd-waveshare = { git = "https://github.com/caemor/epd-waveshare" }
+embedded-hal = "0.2.5"
+bit_field = "0.10.1"
+
+rppal = { version = "0.12.0", features = ["hal-unproven"] }
