@@ -1,27 +1,96 @@
 use embedded_graphics::{
-    fonts::{Font12x16, Font6x8, Text},
+    image::ImageRaw,
+    pixelcolor::{raw::BigEndian, BinaryColor},
     prelude::*,
-    primitives::{Circle, Line},
-    style::PrimitiveStyle,
-    text_style,
 };
-use embedded_hal::prelude::*;
 use epd_waveshare::{
-    color::*,
     epd7in5_v2::{Display7in5, EPD7in5},
-    graphics::{Display, DisplayRotation},
+    graphics::Display,
     prelude::*,
 };
+use rand::seq::SliceRandom;
+use std::{
+    ffi::OsStr,
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
+};
+
+use embedded_graphics::image::Image;
 
 use rppal::gpio::Gpio;
 use rppal::hal::Delay;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 
-// activate spi, gpio in raspi-config
-// needs to be run with sudo because of some sysfs_gpio permission problems and follow-up timing problems
-// see https://github.com/rust-embedded/rust-sysfs-gpio/issues/5 and follow-up issues
+use anyhow::{Context, Result};
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<()> {
+    let (mut spi, mut epd7in5) = setup_waveshare();
+
+    let mut display = Display7in5::default();
+
+    let data = get_random_image().with_context(|| "Failed to get random image")?;
+    let raw_image = ImageRaw::<BinaryColor, BigEndian>::new(&data, 800, 480);
+
+    let image = Image::new(&raw_image, Point::zero());
+
+    image
+        .draw(&mut display)
+        .with_context(|| "Failed to draw to screen")?;
+
+    epd7in5
+        .update_frame(&mut spi, &display.buffer())
+        .with_context(|| "Failed to update frame")?;
+    epd7in5
+        .display_frame(&mut spi)
+        .with_context(|| "Failed to display frame")?;
+
+    println!("Finished rendering - going to sleep");
+    epd7in5.sleep(&mut spi).with_context(|| "Failed to sleep")?;
+    Ok(())
+}
+
+fn get_random_image() -> Result<Vec<u8>> {
+    let entries: Vec<PathBuf> = fs::read_dir(".")
+        .with_context(|| "Failed to read directory")?
+        .filter_map(|file| file.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            let extension = path.extension().and_then(OsStr::to_str);
+            match extension {
+                Some(extension) => extension == "txt",
+                None => false,
+            }
+        })
+        .map(|entry| entry.path())
+        .collect();
+    let chosen = entries
+        .choose(&mut rand::thread_rng())
+        .with_context(|| "Failed choose image file as there are none available")?;
+    let mut data = Vec::new();
+    File::open(chosen)
+        .with_context(|| format!("Failed to open file {}", chosen.display()))?
+        .read_to_end(&mut data)
+        .with_context(|| format!("Failed to read file {} to end", chosen.display()))?;
+    Ok(data)
+}
+
+fn setup_waveshare() -> (
+    Spi,
+    EPD7in5<
+        Spi,
+        rppal::gpio::OutputPin,
+        rppal::gpio::OutputPin,
+        rppal::gpio::OutputPin,
+        rppal::gpio::OutputPin,
+    >,
+) {
+    // activate spi, gpio in raspi-config
+    // needs to be run with sudo because of some sysfs_gpio permission problems and follow-up timing problems
+    // see https://github.com/rust-embedded/rust-sysfs-gpio/issues/5 and follow-up issues
+
+    // This code matches the pins described in https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT
+    // It also matches the code from https://github.com/waveshare/e-Paper
     let mut spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 4_000_000, Mode::Mode0)
         .expect("Unable to configure SPI");
     spi.set_bits_per_word(8).expect("Set bits per word");
@@ -54,98 +123,8 @@ fn main() -> Result<(), std::io::Error> {
         .get(24) // Board 18, BCM 24
         .expect("Failed to get BCM Pin 24 for RST")
         .into_output();
-
     let mut delay = Delay {};
-
-    println!("Setting up EPD7in5");
-    let mut epd7in5 =
+    let epd7in5 =
         EPD7in5::new(&mut spi, cs, busy, dc, rst, &mut delay).expect("eink initalize error");
-
-    println!("Test all the rotations");
-    let mut display = Display7in5::default();
-
-    // display.set_rotation(DisplayRotation::Rotate0);
-    draw_text(&mut display, "Welcome to Valinde", 5, 50);
-    // println!("Rotate 0");
-
-    display.set_rotation(DisplayRotation::Rotate90);
-    // draw_text(&mut display, "Rotate 90!", 5, 50);
-    // println!("Rotate 90");
-
-    // display.set_rotation(DisplayRotation::Rotate180);
-    // draw_text(&mut display, "Rotate 180!", 5, 50);
-    // println!("Rotate 180");
-
-    // display.set_rotation(DisplayRotation::Rotate270);
-    // draw_text(&mut display, "Rotate 270!", 5, 50);
-
-    epd7in5
-        .update_frame(&mut spi, &display.buffer())
-        .expect("Expect frame update");
-    epd7in5
-        .display_frame(&mut spi)
-        .expect("display frame new graphics");
-    // delay.delay_ms(5000u16);
-
-    //println!("Now test new graphics with default rotation and some special stuff:");
-    // display.clear_buffer(Color::White);
-
-    // draw a analog clock
-    // let _ = Circle::new(Point::new(64, 64), 64)
-    //     .into_styled(PrimitiveStyle::with_stroke(Black, 1))
-    //     .draw(&mut display);
-    // let _ = Line::new(Point::new(64, 64), Point::new(0, 64))
-    //     .into_styled(PrimitiveStyle::with_stroke(Black, 1))
-    //     .draw(&mut display);
-    // let _ = Line::new(Point::new(64, 64), Point::new(80, 80))
-    //     .into_styled(PrimitiveStyle::with_stroke(Black, 1))
-    //     .draw(&mut display);
-
-    // draw white on black background
-    let _ = Text::new("It's working-WoB!", Point::new(175, 250))
-        .into_styled(text_style!(
-            font = Font6x8,
-            text_color = White,
-            background_color = Black
-        ))
-        .draw(&mut display);
-
-    // use bigger/different font
-    // let _ = Text::new("It's working-WoB!", Point::new(50, 200))
-    //     .into_styled(text_style!(
-    //         font = Font12x16,
-    //         text_color = White,
-    //         background_color = Black
-    //     ))
-    //     .draw(&mut display);
-
-    // a moving `Hello World!`
-    // let limit = 10;
-    // epd7in5.clear_frame(&mut spi).unwrap();
-    // for i in 0..limit {
-    //     //println!("Moving Hello World. Loop {} from {}", (i + 1), limit);
-
-    //     draw_text(&mut display, "  Hello World! ", 5 + i * 12, 50);
-
-    //     epd7in5.update_frame(&mut spi, &display.buffer()).unwrap();
-    //     epd7in5
-    //         .display_frame(&mut spi)
-    //         .expect("display frame new graphics");
-
-    //     delay.delay_ms(1_000u16);
-    // }
-
-    println!("Finished tests - going to sleep");
-    epd7in5.sleep(&mut spi).expect("Expect sleep to succeed");
-    Ok(())
-}
-
-fn draw_text(display: &mut Display7in5, text: &str, x: i32, y: i32) {
-    let _ = Text::new(text, Point::new(x, y))
-        .into_styled(text_style!(
-            font = Font6x8,
-            text_color = Black,
-            background_color = White
-        ))
-        .draw(display);
+    (spi, epd7in5)
 }
