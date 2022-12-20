@@ -24,7 +24,7 @@ use anyhow::{Context, Result};
 use rand::seq::SliceRandom;
 
 const WIDTH: u32 = 800;
-const HEIGHT: u32 = 480;
+// const HEIGHT: u32 = 480;
 const IMAGE_EXTENSION: &str = "txt";
 
 fn main() -> Result<()> {
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     let mut display = Display7in5::default();
 
     let data = get_random_image().with_context(|| "Failed to get random image")?;
-    let raw_image = ImageRaw::<BinaryColor, BigEndian>::new(&data, WIDTH, HEIGHT);
+    let raw_image = ImageRaw::<BinaryColor, BigEndian>::new(&data, WIDTH);
     let image = Image::new(&raw_image, Point::zero());
 
     image
