@@ -1,8 +1,9 @@
 use std::{
+    env,
     ffi::OsStr,
     fs::{self, File},
     io::Read,
-    path::PathBuf,
+    path::{PathBuf, Path},
 };
 
 use embedded_graphics::image::Image;
@@ -28,11 +29,21 @@ const WIDTH: u32 = 800;
 const IMAGE_EXTENSION: &str = "txt";
 
 fn main() -> Result<()> {
+    let display_path: Option<String> = env::args().nth(1);
+
+
     let (mut spi, mut epd7in5, mut delay) =
         setup_waveshare().with_context(|| "Failed to initialise waveshare display")?;
     let mut display = Display7in5::default();
 
-    let data = get_random_image().with_context(|| "Failed to get random image")?;
+    let data = match display_path {
+        Some(path) => {
+            let path = Path::new(&path).to_path_buf();
+            get_image(&path)?
+        },
+        None => get_random_image().with_context(|| "Failed to get random image")?
+    };
+
     let raw_image = ImageRaw::<BinaryColor, BigEndian>::new(&data, WIDTH);
     let image = Image::new(&raw_image, Point::zero());
 
@@ -41,7 +52,7 @@ fn main() -> Result<()> {
         .with_context(|| "Failed to draw to screen")?;
 
     epd7in5
-        .update_frame(&mut spi, &display.buffer(), &mut delay)
+        .update_frame(&mut spi, display.buffer(), &mut delay)
         .with_context(|| "Failed to update frame")?;
     epd7in5
         .display_frame(&mut spi, &mut delay)
@@ -71,11 +82,15 @@ fn get_random_image() -> Result<Vec<u8>> {
     let chosen = entries
         .choose(&mut rand::thread_rng())
         .with_context(|| "Failed choose image file as there are none available")?;
+    get_image(chosen)
+}
+
+fn get_image(path: &PathBuf) -> Result<Vec<u8>> {
     let mut data = Vec::new();
-    File::open(chosen)
-        .with_context(|| format!("Failed to open file {}", chosen.display()))?
+    File::open(path)
+        .with_context(|| format!("Failed to open file {}", path.display()))?
         .read_to_end(&mut data)
-        .with_context(|| format!("Failed to read file {} to end", chosen.display()))?;
+        .with_context(|| format!("Failed to read file {} to end", path.display()))?;
     Ok(data)
 }
 

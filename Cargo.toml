@@ -10,8 +10,8 @@ edition = "2018"
 embedded-graphics = "0.7.1"
 epd-waveshare = "0.5.0"
 rppal = { version = "0.14.1", features = ["hal-unproven"] }
-rand = "0.8.0"
-anyhow = "1.0.66"
+rand = "0.8.5"
+anyhow = "1.0.69"
 
 [profile.release]
 lto = true
