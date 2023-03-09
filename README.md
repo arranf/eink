@@ -11,3 +11,8 @@ Requires the SPI and GPIO to be activated using `sudo raspi-config`. Requires su
 By default, randomly selects a `.txt` file, assumed to be only binary 1s and 0s, from the root directory to display and renders it.
 
 Can be invoked with `eink ./path/to/file.txt` to display the chosen image.
+
+## Scripts
+
+* Build and sync to the Raspberry Pi using cross: `scripts/pi-build.sh`.
+* Mount the file system: `scripts/pi-mount.example.sh`
